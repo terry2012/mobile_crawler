@@ -1,6 +1,6 @@
 # mobile_crawler
 
-This is a simple crawler to collect web pages of mobile pages.
+This is a simple crawler to collect web pages of mobile version.
 
 #### Install
 
