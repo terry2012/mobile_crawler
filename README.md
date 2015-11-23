@@ -4,7 +4,7 @@ This is a simple crawler to collect web pages of mobile pages.
 
 #### Install
 
-Four lib are used:
+Four libraries are used:
 
 * boost graph : http://www.boost.org/doc/libs/1_59_0/libs/graph/doc/index.html
 * boost regex : http://www.boost.org/doc/libs/1_48_0/libs/regex/doc/html/index.html
@@ -13,8 +13,8 @@ Four lib are used:
 
 Compilation:
 
-* cd <src>
-* make
+* $ cd \<src_path\>
+* $ make
 
 
 #### Run
