@@ -24,4 +24,4 @@ Input/Output can be configed in 'config.h'
 * Ouput: GRAPH_FILE
 
 Run
-* ./bin/crawler
+* $ ./bin/crawler
