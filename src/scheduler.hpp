@@ -48,8 +48,8 @@ private:
                             && not startswith_ignorecase(line, "https://"))
                                 line.insert(0, "http://");
 
-                        if (find(m_pending_urls.begin(), m_pending_urls.end(), line) == m_pending_urls.end())
-                                m_pending_urls.push_back(line);
+                        /* if (find(m_pending_urls.begin(), m_pending_urls.end(), line) == m_pending_urls.end()) */
+                        m_pending_urls.push_back(line);
                 }
 
                 /* TODO: initialize graph */
