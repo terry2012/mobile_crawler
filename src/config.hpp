@@ -13,7 +13,7 @@
 #define URL_MAX_LENGTH_STR              "2047"
 
 #define CONNECTIONS_MAX_NUMBER          10
-#define CONNECTION_TIMEOUT              30
+#define CONNECTION_TIMEOUT              15
 #define MULTI_SELECT_TIMEOUT            100
 
 #define SHORT_SLEEP                     100000
