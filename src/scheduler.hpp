@@ -19,7 +19,7 @@ private:
         Scheduler(string pending_urls_file_path, string graph_file_path) {
                 m_pending_urls_file_path = pending_urls_file_path;
                 m_graph_file_path = graph_file_path;
-                m_crawler = &(Crawler< StringArray, Callback >::get_instance(m_pending_urls, done_callback));
+                m_crawler = &(Crawler< StringArray >::get_instance(m_pending_urls, done_callback, is_crawled));
                 m_graph = &(MyGraph<>::get_instance(graph_file_path));
 
                 read_pending_urls_files();
@@ -81,21 +81,32 @@ private:
                 if (node->v.element.tag == GUMBO_TAG_A &&
                     (href = gumbo_get_attribute(&node->v.element.attributes, "href"))) {
                         string value(href->value);
+                        trim(value);
                         if (startswith_ignorecase(value, "http://")
                             || startswith_ignorecase(value, "https://")) {
                                 links.push_back(value);
                         } else if (startswith_ignorecase(value, "javascript:")) {
                                 ;
+                        } else if (startswith_ignorecase(value, "//")) {
+                                static string http_prefix = "http";
+                                static string https_prefix = "https";
+                                if (startswith_ignorecase(current_url, http_prefix))
+                                        value.insert(0, http_prefix + string(":"));
+                                else
+                                        value.insert(0, https_prefix + string(":"));
+
+                                links.push_back(value);
                         } else if (value.find("://", 0, min((size_t)10, value.length())) == std::string::npos) {
-                                string url(current_url);
-                                size_t index = url.rfind("/");
                                 if (*(value.begin()) != '/')
                                         value.insert(0, "/");
+                                string url(current_url);
+                                size_t index = url.rfind("/");
                                 if (url[index - 1] == '/') {
                                         url = url.append(value);
                                 } else {
                                         url.replace(url.begin() + index, url.end(), value);
                                 }
+                                links.push_back(url);
                         }
                 }
 
@@ -145,7 +156,7 @@ public:
 
                 if (links.size() != 0) {
                         StringArray sa;
-                        Crawler<StringArray, Callback>& c = Crawler<StringArray, Callback>::get_instance(sa, NULL);
+                        Crawler<StringArray>& c = Crawler<StringArray>::get_instance(sa, NULL, NULL);
                         for_each(links.begin(), links.end(), [&url, &c, &g](string& x) {
                                         if (not g.is_crawled(x))
                                                 c.add_new_url(x);
@@ -155,6 +166,13 @@ public:
                 }
 
                 return 0;
+        }
+
+public:
+        static bool is_crawled(string& url) {
+                string empty_str("");
+                MyGraph<>& g = MyGraph<>::get_instance(empty_str);
+                return g.is_crawled(url);
         }
 
 public:
@@ -171,7 +189,7 @@ public:
 
 public:
         int end() {
-                ofstream fd(m_pending_urls_file_path, ios::out | ios::trunc);
+                ofstream fd(m_pending_urls_file_path + string(".output"), ios::out | ios::trunc);
 
                 auto it = m_pending_urls.begin();
                 while (it != m_pending_urls.end()) {

@@ -16,8 +16,13 @@ public:
 typedef size_t (*write_callback_t)(char* ptr, size_t size, size_t nmemb, void* conn);
 typedef int (*callback_t)(Conn*  conn);
 
+typedef bool (*is_crawled_t)(string& url);
 
-template <typename StringArray, typename  Callback> class Crawler {
+
+template <typename StringArray,
+          typename Callback = callback_t,
+          typename IsCrawled = is_crawled_t>
+class Crawler {
 private:
         long            m_file_id;
         CURLM*          m_handler;
@@ -26,15 +31,17 @@ private:
 
         Callback        m_done_callback;
         write_callback_t  m_write_callback;
+        IsCrawled       m_is_crawled_callback;
 
         vector<CURL*>  m_eh_array;
 
 private:
-        Crawler(StringArray& urls, Callback done_callback)
+        Crawler(StringArray& urls, Callback done_callback, IsCrawled is_crawled)
                 : m_file_id(FILE_START_ID),
                   m_pending_urls(urls),
                   m_done_callback(done_callback),
-                  m_write_callback(write_callback)
+                  m_write_callback(write_callback),
+                  m_is_crawled_callback(is_crawled)
         {
                 system("mkdir -p " DEFAULT_OUTPUT_DIR);
 
@@ -57,8 +64,8 @@ public:
                 m_done_callback = done_callback;
         }
 
-        static Crawler<StringArray, Callback>& get_instance(StringArray& urls, Callback done_callback) {
-                static Crawler instance(urls, done_callback);
+        static Crawler<StringArray, Callback>& get_instance(StringArray& urls, Callback done_callback, IsCrawled is_crawled) {
+                static Crawler instance(urls, done_callback, is_crawled);
                 return instance;
         }
 
@@ -148,11 +155,13 @@ private:
                                 throw MyException(string("The url is too long : ") + *it);
                         }
 
-                        string domain = extract_domain_from_url(*it);
-                        if (std::find(domains.begin(), domains.end(), domain) == domains.end()) {
-                                urls.push_back(*it);
+                        if (not m_is_crawled_callback(*it)) {
+                                string domain = extract_domain_from_url(*it);
+                                if (std::find(domains.begin(), domains.end(), domain) == domains.end()) {
+                                        urls.push_back(*it);
+                                }
+                                domains.push_back(domain);
                         }
-                        domains.push_back(domain);
 
                         counter++;
                         it++;
@@ -257,8 +266,14 @@ public:
                                 if (max_fds == -1) {
                                         sleep(MULTI_SELECT_TIMEOUT / 1000);
                                 } else {
+                                        #if 0
                                         if (0 > select(max_fds + 1, &read_fd, &write_fd, &exec_fd, &m_timeout)) {
                                                 LOGE("select(%i,,,,%d)", max_fds + 1, (int)m_timeout.tv_sec);
+                                                return -5;
+                                        }
+                                        #endif
+                                        if (0 > select(max_fds + 1, &read_fd, &write_fd, &exec_fd, NULL)) {
+                                                LOGE("select(%i)", max_fds + 1);
                                                 return -5;
                                         }
                                 }

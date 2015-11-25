@@ -17,6 +17,7 @@
 #include <deque>
 #include <exception>
 #include <algorithm>
+#include <set>
 
 
 /* boost headers */

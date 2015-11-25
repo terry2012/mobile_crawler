@@ -1,5 +1,6 @@
 CXX 		= g++
-CXXFLAGS 	= -g -Wall -std=c++14
+# CXXFLAGS 	= -g -Wall -std=c++14
+CXXFLAGS 	= -Wall -std=c++14 -O3
 
 INCLUDES 	= -I.
 LIBS	 	= -lboost_graph -lboost_regex -lcurl -lgumbo
@@ -15,8 +16,8 @@ all: $(GOAL)
 
 $(GOAL): $(OBJS)
 	$(CXX) $(OBJS) -o $(GOAL) $(LIBS)
-	@mv -f $(GOAL) ../bin/
-	@make clean
+	@cp -f $(GOAL) ../bin/
+	# @make clean
 
 -include $(OBJS:.o=.d)
 
