@@ -33,7 +33,8 @@ private:
         write_callback_t  m_write_callback;
         IsCrawled       m_is_crawled_callback;
 
-        vector<CURL*>  m_eh_array;
+        std::unordered_set<CURL*>  m_eh_array;
+        StringArray  m_crawling_urls;
 
 private:
         Crawler(StringArray& urls, Callback done_callback, IsCrawled is_crawled)
@@ -94,7 +95,7 @@ private:
                 return 0;
         }
 
-        CURL* init_easy_handler(string& url) {
+        CURL* add_easy_handler(string url) {
                 CURL* eh = curl_easy_init();
                 if (NULL == eh)
                         throw MyException("@init_easy_handler@ curl_easy_init() failed");
@@ -116,7 +117,10 @@ private:
                 curl_easy_setopt(eh, CURLOPT_WRITEDATA, conn);
                 curl_easy_setopt(eh, CURLOPT_PRIVATE, conn);
 
-                m_eh_array.push_back(eh);
+                m_eh_array.insert(eh);
+                m_crawling_urls.insert(url);
+
+                curl_multi_add_handle(m_handler, eh);
 
                 return eh;
         }
@@ -137,15 +141,14 @@ private:
                 return url.substr(start_pos, end_pos - start_pos);
         }
 
-        int select_feasible_urls(StringArray& urls) {
+        int select_feasible_urls_by_domains(StringArray& urls) {
                 if (m_pending_urls.size() == 0)
                         return -1;
-
-                StringArray domains;
 
                 int counter = 0;
                 auto it = m_pending_urls.begin();
 
+                StringArray domains;
                 while (it != m_pending_urls.end()) {
                         if (counter >= CONNECTIONS_MAX_NUMBER) {
                                 break;
@@ -155,12 +158,13 @@ private:
                                 throw MyException(string("The url is too long : ") + *it);
                         }
 
-                        if (not m_is_crawled_callback(*it)) {
-                                string domain = extract_domain_from_url(*it);
-                                if (std::find(domains.begin(), domains.end(), domain) == domains.end()) {
-                                        urls.push_back(*it);
+                        string url = *it;
+                        if (not m_is_crawled_callback(url)) {
+                                string domain = extract_domain_from_url(url);
+                                if (domains.count(domain) == 0) {
+                                        urls.insert(url);
                                 }
-                                domains.push_back(domain);
+                                domains.insert(domain);
                         }
 
                         counter++;
@@ -170,24 +174,67 @@ private:
                 return 0;
         }
 
-        int remove_done_url(char* url) {
-                m_pending_urls.erase(remove(m_pending_urls.begin(), m_pending_urls.end(),
-                                            string(url)),
-                                     m_pending_urls.end());
+        int select_feasible_urls(StringArray& urls) {
+                if (m_pending_urls.size() == 0)
+                        return -1;
+
+                int counter = 0;
+                auto it = m_pending_urls.begin();
+                while (it != m_pending_urls.end()) {
+                        if (counter >= CONNECTIONS_MAX_NUMBER) {
+                                break;
+                        }
+
+                        if (it->length() >= URL_MAX_LENGTH) {
+                                throw MyException(string("The url is too long : ") + *it);
+                        }
+
+                        if (urls.count(*it) == 0) {
+                                urls.insert(*it);
+                        }
+
+                        counter++;
+                        it++;
+                }
 
                 return 0;
         }
+
+        int select_only_one_feasible_url(string* url) {
+                if ((NULL == url) || (m_pending_urls.size() == 0))
+                        return -1;
+
+                auto it = m_pending_urls.begin();
+                while (it != m_pending_urls.end()) {
+                        if (m_crawling_urls.count(*it) == 0) {
+                                *url = *it;
+                                return 0;
+                        }
+                        it++;
+                }
+
+                return -1;
+        }
+
+
 public:
+        int remove_done_url(string& url) {
+                m_pending_urls.erase(url);
+
+                return 0;
+        }
+
         int add_new_url(string& url) {
-                if (std::find(m_pending_urls.begin(), m_pending_urls.end(), url) == m_pending_urls.end())
-                        m_pending_urls.push_back(url);
+                if (m_pending_urls.count(url))
+                        m_pending_urls.insert(url);
 
                 return 0;
         }
 
 private:
-        int add_handlers() {
+        int add_multiple_handlers() {
                 StringArray urls;
+                urls.clear();
 
                 LOGD("* %ld urls left.", m_pending_urls.size());
 
@@ -196,13 +243,35 @@ private:
                         return -1;
                 }
 
-                auto it = urls.rbegin();
-                while (it != urls.rend()) {
-                        CURL *eh = init_easy_handler(*it);
-                        curl_multi_add_handle(m_handler, eh);
+                /* for_each(urls.begin(), urls.end(), [](string url) {
+                 *                 cout << "* " << url << endl;
+                 *         }); */
 
+                auto it = urls.begin();
+                while (it != urls.end()) {
+                        add_easy_handler(*it);
                         it++;
                 }
+
+                return 0;
+        }
+
+        int add_only_one_handler() {
+                static long counter = 0;
+
+                counter++;
+                if (counter > 1000) {
+                        LOGD("* %ld urls left.", m_pending_urls.size());
+                        counter = 0;
+                }
+
+
+                string url("");
+                if (select_only_one_feasible_url(&url) != 0) {
+                        LOGD("All urls are crawled.");
+                        return -1;
+                }
+                add_easy_handler(url);
 
                 return 0;
         }
@@ -244,7 +313,7 @@ public:
                 fd_set  exec_fd;
                 CURLMsg  *msg;
 
-                if (add_handlers() != 0)
+                if (add_multiple_handlers() != 0)
                         return -2;
 
                 while (running) {
@@ -288,27 +357,32 @@ public:
                                         fclose(conn->output);
                                         conn->output = NULL;
 
+                                        string url(conn->url);
+
                                         m_done_callback(conn);
                                         LOGI("%d - %s", msg->data.result, curl_easy_strerror(msg->data.result));
 
-                                        remove_done_url(conn->url);
+                                        remove_done_url(url);
                                         free(conn);
 
                                         curl_multi_remove_handle(m_handler, eh);
                                         curl_easy_cleanup(eh);
 
-                                        auto it = std::find(m_eh_array.begin(), m_eh_array.end(), eh);
-                                        if (it != m_eh_array.end())
-                                                m_eh_array.erase(it);
+                                        m_eh_array.erase(eh);
+                                        m_crawling_urls.erase(url);
                                 }
                                 else {
                                         LOGE("exec_fd: CURLMsg (%d)", msg->msg);
                                 }
+
+                                if (add_only_one_handler() == 0) {
+                                        running++;
+                                        break;
+                                }
                         }
                 }
 
-                return run();
-                /* return 0; */
+                return 0;
         }
 
         int end() {

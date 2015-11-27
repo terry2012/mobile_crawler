@@ -1,9 +1,9 @@
 CXX 		= g++
-# CXXFLAGS 	= -g -Wall -std=c++14
-CXXFLAGS 	= -Wall -std=c++14 -O3
+CXXFLAGS 	= -g -Wall -std=c++14
+# CXXFLAGS 	= -Wall -std=c++14 -O3
 
 INCLUDES 	= -I.
-LIBS	 	= -lboost_graph -lboost_regex -lcurl -lgumbo
+LIBS	 	= -lboost_graph -lboost_regex -lcurl -lgumbo -lpthread 
 
 GOAL 		= crawler
 
@@ -17,7 +17,6 @@ all: $(GOAL)
 $(GOAL): $(OBJS)
 	$(CXX) $(OBJS) -o $(GOAL) $(LIBS)
 	@cp -f $(GOAL) ../bin/
-	# @make clean
 
 -include $(OBJS:.o=.d)
 
