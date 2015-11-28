@@ -7,26 +7,26 @@
 typedef struct Conn {
 public:
         CURL*  easy;
-        char  url[URL_MAX_LENGTH];
-        char  file_path[FILE_PATH_MAX_LENGTH];
         FILE*  output;
+        string_hash_t url;
+        string_hash_t file_path;
 } Conn;
 
 
 typedef size_t (*write_callback_t)(char* ptr, size_t size, size_t nmemb, void* conn);
 typedef int (*callback_t)(Conn*  conn);
-
-typedef bool (*is_crawled_t)(string& url);
+typedef bool (*is_crawled_t)(string_hash_t url);
 
 
 template <typename StringArray,
           typename Callback = callback_t,
-          typename IsCrawled = is_crawled_t>
+          typename IsCrawled = is_crawled_t,
+          typename StringHash = string_hash_t>
 class Crawler {
 private:
-        long            m_file_id;
+        uint64_t        m_file_id;
         CURLM*          m_handler;
-        StringArray&    m_pending_urls;
+        StringArray*    m_pending_urls;
         struct timeval  m_timeout;
 
         Callback        m_done_callback;
@@ -36,10 +36,11 @@ private:
         std::unordered_set<CURL*>  m_eh_array;
         StringArray  m_crawling_urls;
 
+        PublicStringPool<>*  m_psp;
+
 private:
-        Crawler(StringArray& urls, Callback done_callback, IsCrawled is_crawled)
-                : m_file_id(FILE_START_ID),
-                  m_pending_urls(urls),
+        Crawler(StringArray* urls, Callback done_callback, IsCrawled is_crawled)
+                : m_pending_urls(urls),
                   m_done_callback(done_callback),
                   m_write_callback(write_callback),
                   m_is_crawled_callback(is_crawled)
@@ -48,6 +49,31 @@ private:
 
                 curl_global_init(CURL_GLOBAL_ALL);
                 init_multi_handler();
+
+                init_file_id();
+                LOGD("init_file_id : %ld", m_file_id);
+
+                m_psp = &(PublicStringPool<>::get_instance());
+        }
+
+        int init_file_id() {
+                m_file_id = FILE_START_ID;
+                auto dir = opendir(DEFAULT_OUTPUT_DIR);
+                if(NULL == dir)
+                        return -1;
+
+                auto entity = readdir(dir);
+                while(entity != NULL) {
+                        if (entity->d_type == DT_REG)
+                                m_file_id = max(m_file_id, (uint64_t)atol(entity->d_name));
+                        entity = readdir(dir);
+                }
+
+                if (m_file_id != FILE_START_ID)
+                        m_file_id += 100;
+
+                closedir(dir);
+                return 0;
         }
 
 public:
@@ -65,37 +91,37 @@ public:
                 m_done_callback = done_callback;
         }
 
-        static Crawler<StringArray, Callback>& get_instance(StringArray& urls, Callback done_callback, IsCrawled is_crawled) {
+        static Crawler<StringArray, Callback>& get_instance(StringArray* urls, Callback done_callback, IsCrawled is_crawled) {
                 static Crawler instance(urls, done_callback, is_crawled);
                 return instance;
         }
 
 private:
         static size_t  write_callback(char *ptr, size_t size, size_t nmemb, void *userdata) {
-                /* size_t  real_size = (size_t)(size * nmemb); */
                 Conn*  conn = (Conn*)userdata;
 
                 return fwrite(ptr, size, nmemb, conn->output);
         }
 
-        int init_conn(CURL* eh, string& url, Conn* conn) {
+        int init_conn(CURL* eh, StringHash url, Conn* conn) {
                 conn->easy = eh;
-                memset(conn->url, 0, sizeof(conn->url));
-                snprintf(conn->url, sizeof(conn->url) - 1, "%s", url.c_str());
+                conn->url = url;
 
-                memset(conn->file_path, 0, sizeof(conn->file_path));
-                snprintf(conn->file_path, sizeof(conn->file_path) -1, "%s/%ld.html", DEFAULT_OUTPUT_DIR, m_file_id);
+                std::stringstream file_path;
+                file_path << DEFAULT_OUTPUT_DIR << "/" << m_file_id;
                 m_file_id += 1;
+                string tmp_file_path =file_path.str();
+                conn->file_path = m_psp->add_string(&tmp_file_path);
 
-                conn->output = fopen(conn->file_path, "w+");
+                conn->output = fopen(tmp_file_path.c_str(), "w+");
                 if (NULL == conn->output) {
-                        throw MyException(string("@init_easy_handler@ can't open file ") + string(conn->file_path));
+                        throw MyException("@init_easy_handler@ can't open file " + tmp_file_path);
                 }
 
                 return 0;
         }
 
-        CURL* add_easy_handler(string url) {
+        CURL* add_easy_handler(StringHash url) {
                 CURL* eh = curl_easy_init();
                 if (NULL == eh)
                         throw MyException("@init_easy_handler@ curl_easy_init() failed");
@@ -103,7 +129,7 @@ private:
                 Conn*  conn = (Conn*)malloc(sizeof(Conn));
                 init_conn(eh, url, conn);
 
-                curl_easy_setopt(eh, CURLOPT_URL, url.c_str());
+                curl_easy_setopt(eh, CURLOPT_URL, m_psp->get_string_from_hash(url)->c_str());
                 curl_easy_setopt(eh, CURLOPT_FOLLOWLOCATION, true);
                 curl_easy_setopt(eh, CURLOPT_CONNECTTIMEOUT, CONNECTION_TIMEOUT);
                 curl_easy_setopt(eh, CURLOPT_TIMEOUT, CONNECTION_TIMEOUT);
@@ -125,46 +151,48 @@ private:
                 return eh;
         }
 
-        string extract_domain_from_url(string& url) {
+        string extract_domain_from_url(string* url) {
                 int  start_pos = 0;
-                int  tmp_pos = url.find("://");
+                int  tmp_pos = url->find("://");
                 if (tmp_pos != -1)
                         start_pos = tmp_pos + 3;
 
                 boost::regex rgx("^([0-9A-Za-z.-]+)[^0-9A-Za-z.-]?");
                 boost::match_results<std::string::iterator> match;
                 boost::match_flag_type flags = boost::match_default;
-                if (regex_search(url.begin() + start_pos, url.end(), match, rgx, flags))
+                if (regex_search(url->begin() + start_pos, url->end(), match, rgx, flags))
                         return std::string(match[1].first, match[1].second);
 
-                int  end_pos = url.find("/", start_pos);
-                return url.substr(start_pos, end_pos - start_pos);
+                int  end_pos = url->find("/", start_pos);
+                return url->substr(start_pos, end_pos - start_pos);
         }
 
-        int select_feasible_urls_by_domains(StringArray& urls) {
-                if (m_pending_urls.size() == 0)
+        int select_feasible_urls_by_domains(StringArray* urls) {
+                if (m_pending_urls->size() == 0)
                         return -1;
 
                 int counter = 0;
-                auto it = m_pending_urls.begin();
+                auto it = m_pending_urls->begin();
 
                 StringArray domains;
-                while (it != m_pending_urls.end()) {
+                while (it != m_pending_urls->end()) {
                         if (counter >= CONNECTIONS_MAX_NUMBER) {
                                 break;
                         }
 
+                        string* url = m_psp->get_string_from_hash(*it);
                         if (it->length() >= URL_MAX_LENGTH) {
-                                throw MyException(string("The url is too long : ") + *it);
+                                throw MyException(string("The url is too long : ") + (url != NULL? *url : string("")));
                         }
 
-                        string url = *it;
-                        if (not m_is_crawled_callback(url)) {
+                        if ((not m_is_crawled_callback(*it)) && (m_crawling_urls.count(*it) == 0)
+                            && (urls.count(*it) == 0)) {
                                 string domain = extract_domain_from_url(url);
-                                if (domains.count(domain) == 0) {
-                                        urls.insert(url);
+                                StringHash domain_sh = m_psp->add_string(&domain);
+                                if (domains.count(domain_sh) == 0) {
+                                        urls.insert(*it);
+                                        domains.insert(domain_sh);
                                 }
-                                domains.insert(domain);
                         }
 
                         counter++;
@@ -174,24 +202,24 @@ private:
                 return 0;
         }
 
-        int select_feasible_urls(StringArray& urls) {
-                if (m_pending_urls.size() == 0)
+        int select_feasible_urls(StringArray* urls) {
+                if (m_pending_urls->size() == 0)
                         return -1;
 
                 int counter = 0;
-                auto it = m_pending_urls.begin();
-                while (it != m_pending_urls.end()) {
+                auto it = m_pending_urls->begin();
+                while (it != m_pending_urls->end()) {
                         if (counter >= CONNECTIONS_MAX_NUMBER) {
                                 break;
                         }
 
-                        if (it->length() >= URL_MAX_LENGTH) {
-                                throw MyException(string("The url is too long : ") + *it);
+                        const string*  url = m_psp->get_string_from_hash(*it);
+                        if (url->length() >= URL_MAX_LENGTH) {
+                                throw MyException(string("The url is too long : ") + *url);
                         }
 
-                        if (urls.count(*it) == 0) {
-                                urls.insert(*it);
-                        }
+                        if (not m_is_crawled_callback(*it) && m_crawling_urls.count(*it) == 0 && urls->count(*it) == 0)
+                                urls->insert(*it);
 
                         counter++;
                         it++;
@@ -200,35 +228,36 @@ private:
                 return 0;
         }
 
-        int select_only_one_feasible_url(string* url) {
-                if ((NULL == url) || (m_pending_urls.size() == 0))
+        StringHash select_only_one_feasible_url() {
+                if (m_pending_urls->size() == 0)
                         return -1;
 
-                auto it = m_pending_urls.begin();
-                while (it != m_pending_urls.end()) {
-                        if (m_crawling_urls.count(*it) == 0) {
-                                *url = *it;
-                                return 0;
+                auto it = m_pending_urls->begin();
+                while (it != m_pending_urls->end()) {
+                        if (not m_is_crawled_callback(*it) && m_crawling_urls.count(*it) == 0) {
+                                return *it;
                         }
                         it++;
                 }
 
-                return -1;
+                return 0;
         }
 
 
 public:
-        int remove_done_url(string& url) {
-                m_pending_urls.erase(url);
+        int remove_done_url(StringHash url) {
+                m_pending_urls->erase(url);
 
                 return 0;
         }
 
-        int add_new_url(string& url) {
-                if (m_pending_urls.count(url))
-                        m_pending_urls.insert(url);
+        int add_new_url(StringHash url) {
+                if (url != 0 && m_pending_urls->count(url) == 0) {
+                        m_pending_urls->insert(url);
+                        return 0;
+                }
 
-                return 0;
+                return -1;
         }
 
 private:
@@ -236,10 +265,10 @@ private:
                 StringArray urls;
                 urls.clear();
 
-                LOGD("* %ld urls left.", m_pending_urls.size());
+                LOGD("* %ld urls left.", m_pending_urls->size());
 
-                if (select_feasible_urls(urls) != 0) {
-                        LOGD("All urls are crawled.");
+                if (select_feasible_urls(&urls) != 0) {
+                        LOGD("@add_multiple_handlers@ All urls are crawled.");
                         return -1;
                 }
 
@@ -261,14 +290,14 @@ private:
 
                 counter++;
                 if (counter > 1000) {
-                        LOGD("* %ld urls left.", m_pending_urls.size());
+                        LOGD("* %ld urls left.", m_pending_urls->size());
                         counter = 0;
                 }
 
 
-                string url("");
-                if (select_only_one_feasible_url(&url) != 0) {
-                        LOGD("All urls are crawled.");
+                StringHash url = select_only_one_feasible_url();
+                if (url == 0) {
+                        LOGD("@add_only_one_handler@ All urls are crawled.");
                         return -1;
                 }
                 add_easy_handler(url);
@@ -279,7 +308,7 @@ private:
         void init_multi_handler() {
                 m_handler = curl_multi_init();
                 if (NULL == m_handler)
-                        throw "can't init curl";
+                        throw MyException("can't init curl");
 
                 curl_multi_setopt(m_handler, CURLMOPT_MAXCONNECTS, CONNECTIONS_MAX_NUMBER);
                 curl_multi_setopt(m_handler, CURLMOPT_PIPELINING, 1L);
@@ -357,19 +386,17 @@ public:
                                         fclose(conn->output);
                                         conn->output = NULL;
 
-                                        string url(conn->url);
-
                                         m_done_callback(conn);
                                         LOGI("%d - %s", msg->data.result, curl_easy_strerror(msg->data.result));
 
-                                        remove_done_url(url);
+                                        remove_done_url(conn->url);
                                         free(conn);
 
                                         curl_multi_remove_handle(m_handler, eh);
                                         curl_easy_cleanup(eh);
 
                                         m_eh_array.erase(eh);
-                                        m_crawling_urls.erase(url);
+                                        m_crawling_urls.erase(conn->url);
                                 }
                                 else {
                                         LOGE("exec_fd: CURLMsg (%d)", msg->msg);

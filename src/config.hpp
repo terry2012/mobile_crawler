@@ -3,6 +3,7 @@
 
 #define PENDING_URL_FILE                "./input.txt"
 #define GRAPH_FILE                      "./graph.graphml"
+#define STRINGS_FILE                    "./mystrings.txt"
 
 #define DEFAULT_OUTPUT_DIR              "output"
 #define FILE_PATH_MAX_LENGTH            64

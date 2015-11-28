@@ -2,12 +2,13 @@
 #define __MYGRAPH_H__ 1
 
 #include "common.hpp"
+#include "public_string_pool.hpp"
 
 typedef struct RealVertex {
-        string  url;
-        string  file_path;
+        string_hash_t  url;
+        string_hash_t  file_path;
         time_t  crawled_time;
-        long  status_code;
+        short  status_code;
         bool  is_crawled;
         bool  is_malicious;
 } MyVertex;
@@ -17,7 +18,8 @@ template < typename Graph = RealGraph,
            typename Vertex = RealVertex,
            typename VD  = typename boost::graph_traits<Graph>::vertex_descriptor,
            typename ED  = typename boost::graph_traits<Graph>::edge_descriptor,
-           typename UrlToVertex  = typename std::unordered_map<string, VD> >
+           typename StringHash = string_hash_t,
+           typename UrlToVertex  = typename std::unordered_map<StringHash, VD> >
 class MyGraph {
 private:
         UrlToVertex  m_urls_to_vertices;
@@ -25,7 +27,7 @@ private:
         Graph  m_graph;
 
 private:
-        MyGraph(string& graph_file_path) : m_graph_file_path(graph_file_path) {
+        MyGraph(string graph_file_path) : m_graph_file_path(graph_file_path) {
                 read_graph();
 
                 typedef typename graph_traits<Graph>::vertex_iterator vertex_it;
@@ -42,7 +44,7 @@ public:
                 ;
         }
 
-        static MyGraph& get_instance(string& graph_file_path) {
+        static MyGraph& get_instance(string graph_file_path) {
                 static MyGraph my_graph(graph_file_path);
                 return my_graph;
         }
@@ -51,7 +53,7 @@ public:
                 return m_graph;
         }
 
-        bool is_crawled(string& url) {
+        bool is_crawled(StringHash url) {
                 if (m_urls_to_vertices.count(url) == 0)
                         return false;
 
@@ -59,26 +61,23 @@ public:
                 return m_graph[v].is_crawled;
         }
 
-        void init_vertex(RealVertex& v, string& url, string& file_path, time_t& crawled_time,
-                         long status_code, bool is_crawled, bool is_malicious) {
-                v.url = url;
-                v.file_path = file_path;
-                v.crawled_time = crawled_time;
-                v.status_code = status_code;
-                v.is_crawled = is_crawled;
-                v.is_malicious = is_malicious;
+        void init_vertex(RealVertex* v, StringHash url, StringHash file_path, time_t crawled_time,
+                         int status_code, bool is_crawled, bool is_malicious) {
+                v->url = url;
+                v->file_path = file_path;
+                v->crawled_time = crawled_time;
+                v->status_code = status_code;
+                v->is_crawled = is_crawled;
+                v->is_malicious = is_malicious;
         }
 
-        VD get_vd(string& url) {
+        VD get_vd(StringHash url) {
                 VD v;
                 if (m_urls_to_vertices.count(url) == 0) {
                         v = boost::add_vertex(m_graph);
                         m_urls_to_vertices[url] = v;
 
-                        string empty_str("");
-                        time_t t;
-                        memset(&t, 0, sizeof(time_t));
-                        init_vertex(m_graph[v], url, empty_str, t, 0, false, false);
+                        init_vertex(&m_graph[v], url, 0, 0, 0, false, false);
                 } else {
                         v = m_urls_to_vertices[url];
                 }
@@ -87,15 +86,15 @@ public:
         }
 
 
-        int add_vertex(string& url, string& file_path, time_t crawled_time,
-                       long status_code, bool is_crawled, bool is_malicious) {
+        int add_vertex(StringHash url, StringHash file_path, time_t crawled_time,
+                       int status_code, bool is_crawled, bool is_malicious) {
                 VD v = get_vd(url);
-                init_vertex(m_graph[v], url, file_path, crawled_time,
+                init_vertex(&m_graph[v], url, file_path, crawled_time,
                             status_code, is_crawled, is_malicious);
                 return 0;
         }
 
-        int add_edge(string& src_url, string& dst_url) {
+        int add_edge(StringHash src_url, StringHash dst_url) {
                 VD src_vd = get_vd(src_url);
                 VD dst_vd = get_vd(dst_url);
                 boost::add_edge(src_vd, dst_vd, m_graph);

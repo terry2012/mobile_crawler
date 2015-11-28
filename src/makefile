@@ -3,7 +3,7 @@ CXXFLAGS 	= -g -Wall -std=c++14
 # CXXFLAGS 	= -Wall -std=c++14 -O3
 
 INCLUDES 	= -I.
-LIBS	 	= -lboost_graph -lboost_regex -lcurl -lgumbo -lpthread 
+LIBS	 	= -lboost_graph -lboost_regex -lcurl -lgumbo 
 
 GOAL 		= crawler
 
