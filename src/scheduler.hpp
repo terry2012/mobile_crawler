@@ -203,7 +203,7 @@ public:
 
 public:
         int end() {
-                ofstream fd(m_pending_urls_file_path + string(".output"), ios::out | ios::trunc);
+                ofstream fd(TO_BE_CRAWLED_FILE, ios::out | ios::trunc);
 
                 auto it = m_pending_urls.begin();
                 while (it != m_pending_urls.end()) {
@@ -220,6 +220,7 @@ public:
 
                 m_crawler->end();
                 m_graph->end();
+                m_psp->end();
 
                 return 0;
         }
