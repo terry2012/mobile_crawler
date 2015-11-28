@@ -105,9 +105,14 @@ private:
                                         value.insert(0, https_prefix + string(":"));
 
                                 to_be_inserted_str = &value;
+                        } else if (startswith_ignorecase(value, "/")) {
+                                Crawler<StringArray>& c = Crawler<StringArray>::get_instance(NULL, NULL, NULL);
+                                string domain = c.extract_domain_from_url((string*)url);
+                                if (domain.length() > 0) {
+                                        new_url = domain + value;
+                                        to_be_inserted_str = &new_url;
+                                }
                         } else if (value.length() > 0 && value.find("://", 0, min((size_t)10, value.length())) == std::string::npos) {
-                                if (*(value.begin()) != '/')
-                                        value.insert(0, "/");
                                 new_url = *url;
                                 size_t index = new_url.rfind("/");
                                 if (new_url[index - 1] == '/') {
@@ -118,9 +123,9 @@ private:
                                 to_be_inserted_str = &new_url;
                         }
 
-                        StringHash url_str = psp->add_string(to_be_inserted_str);
-                        if (url_str != 0)
-                                links->insert(url_str);
+                        StringHash url_sh = psp->add_string(to_be_inserted_str);
+                        if (url_sh != 0)
+                                links->insert(url_sh);
                 }
 
                 GumboVector* children = &node->v.element.children;
@@ -176,6 +181,7 @@ public:
                                         c.add_new_url(*it);
                                 g.get_vd(*it);
                                 g.add_edge(conn->url, *it);
+                                /* cout << "inserting " << *psp->get_string_from_hash(*it) << endl; */
                                 it++;
                         }
                 }

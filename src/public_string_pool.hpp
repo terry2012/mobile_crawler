@@ -56,7 +56,8 @@ public:
                 if (hash_to_index.count(sh) != 0)
                         return &string_pool[hash_to_index[sh]];
 
-                return NULL;
+                static string empty_str("");
+                return &empty_str;
         }
 
         bool exist(string* str) {

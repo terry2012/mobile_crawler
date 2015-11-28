@@ -151,7 +151,11 @@ private:
                 return eh;
         }
 
+public:
         string extract_domain_from_url(string* url) {
+                if (NULL == url || url->length() == 0)
+                        return "";
+
                 int  start_pos = 0;
                 int  tmp_pos = url->find("://");
                 if (tmp_pos != -1)
@@ -164,9 +168,9 @@ private:
                         return std::string(match[1].first, match[1].second);
 
                 int  end_pos = url->find("/", start_pos);
-                return url->substr(start_pos, end_pos - start_pos);
+                return url->substr(0, end_pos - start_pos);
         }
-
+private:
         int select_feasible_urls_by_domains(StringArray* urls) {
                 if (m_pending_urls->size() == 0)
                         return -1;
