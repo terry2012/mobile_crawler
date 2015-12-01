@@ -146,3 +146,12 @@ uint64_t myhash(const string* str)
 {
         return ((uint64_t)crc32(str) << 32) + hash32(str);
 }
+
+/* http://www.cplusplus.com/forum/beginner/73057/ */
+char* get_current_time( const char* format)
+{
+        std::time_t t = std::time(0) ;
+        static char cstr[128] ;
+        std::strftime( cstr, sizeof(cstr), format, std::localtime(&t) ) ;
+        return cstr;
+}

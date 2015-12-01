@@ -15,6 +15,7 @@ void my_handler(int s)
 int main(int argc, char **argv)
 {
         signal(SIGINT, my_handler);
+        signal(SIGTERM, my_handler);
 
         scheduler = &(Scheduler<>::get_instance(PENDING_URL_FILE, GRAPH_FILE));
         int rc = scheduler->run();

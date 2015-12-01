@@ -98,6 +98,13 @@ public:
                 VD src_vd = get_vd(src_url);
                 VD dst_vd = get_vd(dst_url);
                 boost::add_edge(src_vd, dst_vd, m_graph);
+
+                static size_t counter = 0;
+                counter += 1;
+                if (counter > 10000) {
+                        LOGD("> %ld nodes and %ld edges.", num_vertices(m_graph), num_edges(m_graph));
+                        counter = 0;
+                }
                 return 0;
         }
 
@@ -141,6 +148,8 @@ public:
         }
 
         int end() {
+                LOGD("mygraph.end()");
+                LOGD("There are %ld nodes and %ld edges.", num_vertices(m_graph), num_edges(m_graph));
                 this->write_graph();
                 return 0;
         }

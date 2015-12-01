@@ -161,14 +161,17 @@ public:
                 if (tmp_pos != -1)
                         start_pos = tmp_pos + 3;
 
+
+#if 0
                 boost::regex rgx("^([0-9A-Za-z.-]+)[^0-9A-Za-z.-]?");
                 boost::match_results<std::string::iterator> match;
                 boost::match_flag_type flags = boost::match_default;
                 if (regex_search(url->begin() + start_pos, url->end(), match, rgx, flags))
                         return std::string(match[1].first, match[1].second);
+#endif
 
-                int  end_pos = url->find("/", start_pos);
-                return url->substr(0, end_pos - start_pos);
+                int  end_pos = min(url->find("/", start_pos), url->size());
+                return url->substr(0, end_pos);
         }
 private:
         int select_feasible_urls_by_domains(StringArray* urls) {

@@ -1,6 +1,6 @@
 CXX 		= g++
-CXXFLAGS 	= -g -Wall -std=c++14
-# CXXFLAGS 	= -Wall -std=c++14 -O3
+# CXXFLAGS 	= -g -Wall -std=c++14
+CXXFLAGS 	= -Wall -std=c++14 -O2
 
 INCLUDES 	= -I.
 LIBS	 	= -lboost_graph -lboost_regex -lcurl -lgumbo 

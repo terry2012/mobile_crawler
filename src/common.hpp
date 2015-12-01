@@ -50,6 +50,8 @@ using namespace std;
 using namespace boost;
 
 
+char* get_current_time( const char* format = "%I:%M:%S");
+
 bool startswith(const string& long_str, const string& short_str);
 bool startswith_ignorecase(const string& long_str, const string& short_str);
 bool endswith(const string& long_str, const string& short_str);

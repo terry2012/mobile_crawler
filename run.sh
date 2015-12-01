@@ -25,8 +25,8 @@ do
                 exit 0
         fi
 
-        echo $memory_usage
-        result=`echo "$memory_usage > 80" | bc`
+        echo `date +"%I:%M:%S"`  "   $memory_usage"
+        result=`echo "$memory_usage > 60" | bc`
         if [[ $result -ge 1 ]]
         then
                 kill -15 $pid

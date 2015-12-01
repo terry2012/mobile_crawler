@@ -87,6 +87,7 @@ private:
                         PublicStringPool<>* psp = &(PublicStringPool<>::get_instance());
 
                         string  value = href->value;
+                        /* cout << "* " << value << endl; */
                         string  new_url;
                         string*  to_be_inserted_str = NULL;
                         const string*  url = psp->get_string_from_hash(current_url);
@@ -96,36 +97,57 @@ private:
                                 to_be_inserted_str = &value;
                         } else if (startswith_ignorecase(value, "javascript:")) {
                                 ;
-                        } else if (startswith_ignorecase(value, "//")) {
-                                static string http_prefix = "http";
-                                static string https_prefix = "https";
-                                if (startswith_ignorecase(*url, http_prefix))
-                                        value.insert(0, http_prefix + string(":"));
-                                else
-                                        value.insert(0, https_prefix + string(":"));
+                        } else if (url->find(value) != (size_t)-1){
+                                if (startswith_ignorecase(value, "//")) {
+                                        static string http_prefix = "http";
+                                        static string https_prefix = "https";
+                                        if (startswith_ignorecase(*url, http_prefix))
+                                                value.insert(0, http_prefix + string(":"));
+                                        else
+                                                value.insert(0, https_prefix + string(":"));
 
-                                to_be_inserted_str = &value;
-                        } else if (startswith_ignorecase(value, "/")) {
-                                Crawler<StringArray>& c = Crawler<StringArray>::get_instance(NULL, NULL, NULL);
-                                string domain = c.extract_domain_from_url((string*)url);
-                                if (domain.length() > 0) {
-                                        new_url = domain + value;
-                                        to_be_inserted_str = &new_url;
+                                        to_be_inserted_str = &value;
+                                } else if (startswith_ignorecase(value, "/")) {
+                                        Crawler<StringArray>& c = Crawler<StringArray>::get_instance(NULL, NULL, NULL);
+                                        string domain = c.extract_domain_from_url((string*)url);
+                                        /* cout << "url: " << *url << " domain: " << domain << endl; */
+                                        if (domain.length() > 0) {
+                                                new_url = domain + value;
+                                                to_be_inserted_str = &new_url;
+                                        }
+                                } else if (value.length() > 0 && value.find("://", 0, min((size_t)10, value.length())) == (size_t)-1) {
+                                        if (value.find("./") == (size_t)-1) {
+                                                new_url = *url;
+                                                size_t index = new_url.rfind("/");
+                                                /* cout << "index: " << index << " " << new_url[index - 1] << new_url[index]  << endl; */
+                                                if ((index == (size_t)-1) || index > new_url.size()) {
+                                                        new_url.append("/");
+                                                        new_url.append(value);
+                                                } else {
+                                                        if (index > 2 && new_url[index - 1] == '/' && new_url[index - 2] == ':') {
+                                                                new_url.append("/");
+                                                                new_url.append(value);
+                                                        } else {
+                                                                new_url.replace(new_url.begin() + index + 1, new_url.end(), value);
+                                                        }
+                                                }
+                                                to_be_inserted_str = &new_url;
+                                        }
                                 }
-                        } else if (value.length() > 0 && value.find("://", 0, min((size_t)10, value.length())) == std::string::npos) {
-                                new_url = *url;
-                                size_t index = new_url.rfind("/");
-                                if (new_url[index - 1] == '/') {
-                                        new_url.append(value);
-                                } else {
-                                        new_url.replace(new_url.begin() + index, new_url.end(), value);
-                                }
-                                to_be_inserted_str = &new_url;
                         }
 
-                        StringHash url_sh = psp->add_string(to_be_inserted_str);
-                        if (url_sh != 0)
-                                links->insert(url_sh);
+                        if (to_be_inserted_str != NULL) {
+                                size_t index = to_be_inserted_str->find("#");
+                                if (index != (size_t)-1 && index <= to_be_inserted_str->length()) {
+                                        to_be_inserted_str->erase(to_be_inserted_str->begin() + index, to_be_inserted_str->end());
+                                }
+
+                                StringHash url_sh = psp->add_string(to_be_inserted_str);
+                                if (url_sh != 0) {
+                                        /* cout << "inserting " << *to_be_inserted_str << endl; */
+                                        links->insert(url_sh);
+                                }
+                        }
                 }
 
                 GumboVector* children = &node->v.element.children;
@@ -181,7 +203,6 @@ public:
                                         c.add_new_url(*it);
                                 g.get_vd(*it);
                                 g.add_edge(conn->url, *it);
-                                /* cout << "inserting " << *psp->get_string_from_hash(*it) << endl; */
                                 it++;
                         }
                 }
